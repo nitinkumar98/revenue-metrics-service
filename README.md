@@ -181,46 +181,7 @@ after re-running ingestion twice — no duplicates, because of the
 ```bash
 npm test
 ```
-Expected: 4 pass (1 skips if run without a `DATABASE_URL` set).
+Expected: 4 pass
 
-See `TESTING.md` for the complete, step-by-step testing guide, including how
-to create Stripe test charges and how to verify the drift-guardrail test
-actually catches a regression.
 
-## Tradeoffs / what's simplified
 
-- **One live source wired up (Stripe), one more mapped but not wired
-  (`crm_invoices` in `statusMap.js`)** — added to prove the normalization
-  layer generalizes across a second vocabulary without touching
-  `metricsService.js`, but there's no live ingestion script for it here.
-- **Incremental cursor**: Stripe's `created: { gt: cursor }` param is wired
-  into `ingestStripeCharges`, but the cursor itself isn't persisted between
-  runs in this version — each run does a bounded full fetch. In production
-  I'd store the last successful `created` timestamp per source in a small
-  `sync_state` table, and on a 410/expired-cursor-shaped error, fall back to
-  omitting the `created` filter entirely (full backfill) rather than
-  crashing.
-- **Money as integer cents**, not floating point, to avoid rounding drift
-  in aggregation — deliberate, not an oversight.
-- **Week bucketing** uses Postgres `date_trunc('week', ...)`, which buckets
-  to the ISO week start (Monday).
-
-## Sources & references
-
-- Stripe API docs — Charges list & test mode: https://docs.stripe.com/api/charges/list
-- Stripe testing docs: https://docs.stripe.com/testing
-- Supabase database connection docs: https://supabase.com/docs/guides/database/connecting-to-postgres
-- node-postgres (`pg`) docs, connection pooling: https://node-postgres.com/features/pooling
-- Postgres `date_trunc` docs: https://www.postgresql.org/docs/current/functions-datetime.html
-- Node.js built-in test runner docs: https://nodejs.org/api/test.html
-- Render Node deployment docs: https://render.com/docs/deploy-node-express-app
-
-## AI usage
-
-Built with Claude (Anthropic). Used it to scaffold the schema, ingestion,
-metrics service, and the two guardrail tests, to reason through the
-allow-list-vs-exclusion-list argument, and to debug the live setup (Stripe
-key/account mismatches, Render deployment). Verified the guardrail test by
-deliberately injecting a second revenue query into `server.js` and
-confirming the test suite caught it before reverting the change. Chat
-export: <add your share link here>.
