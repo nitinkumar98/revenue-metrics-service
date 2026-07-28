@@ -85,14 +85,14 @@ npm start
 
 **2. Health check**
 
-curl.exe "http://localhost:3000/health"
+Endpoint: curl.exe "http://localhost:3000/health"
 
 Expected:
 {"status":"ok"}
 
 **3. Summary — the canonical revenue number**
    
-curl.exe "http://localhost:3000/metrics/summary?start=2020-01-01&end=2030-01-01"
+Endpoint: curl.exe "http://localhost:3000/metrics/summary?start=2020-01-01&end=2030-01-01"
 
 Expected (based on your data — 1 collected $100 charge, rest failed):
 
@@ -103,7 +103,7 @@ Expected (based on your data — 1 collected $100 charge, rest failed):
   "transaction_count": <txnCount>
 }
 **4. Daily breakdown**
-curl.exe "http://localhost:3000/metrics/breakdown?start=2020-01-01&end=2030-01-01&granularity=day"
+Endpoint: curl.exe "http://localhost:3000/metrics/breakdown?start=2020-01-01&end=2030-01-01&granularity=day"
 
 Expected: one bucket with collected_cents: <Amount> on the day you created that charge — everything else in your DB (the failed ones) simply won't appear here since they're excluded by the allow-list.
 
@@ -114,27 +114,27 @@ curl.exe "http://localhost:3000/metrics/breakdown?start=2020-01-01&end=2030-01-0
 
 Missing params → 400, not a crash:
 
-curl.exe "http://localhost:3000/metrics/summary"
+Endpoint: curl.exe "http://localhost:3000/metrics/summary"
 
 {"error":"start and end query params are required (ISO 8601 dates)"}
 
 Invalid range (end before start) → 400:
 
 
-curl.exe "http://localhost:3000/metrics/summary?start=2026-01-01&end=2020-01-01"
+Endpoint: curl.exe "http://localhost:3000/metrics/summary?start=2026-01-01&end=2020-01-01"
 
 {"error":"end must be after start"}
 
 A narrow date range with no data → zero, not an error:
 
 
-curl.exe "http://localhost:3000/metrics/summary?start=1999-01-01&end=1999-12-31"
+Endpoint: curl.exe "http://localhost:3000/metrics/summary?start=1999-01-01&end=1999-12-31"
 {"total_collected_cents":0,"transaction_count":0}
 
 **7. Idempotency**
 npm run seed:stripe
 npm run seed:stripe
-curl.exe "http://localhost:3000/metrics/summary?start=2020-01-01&end=2030-01-01"
+Endpoint: curl.exe "http://localhost:3000/metrics/summary?start=2020-01-01&end=2030-01-01"
 
 total_collected_cents and transaction_count must stay exactly the same after re-running ingestion twice — no duplicates, because of the unique(source, source_id) constraint + upsert.
 
