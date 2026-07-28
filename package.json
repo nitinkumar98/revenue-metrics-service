@@ -1,0 +1,23 @@
+{
+  "name": "revenue-metrics-service",
+  "version": "1.0.0",
+  "description": "Single-source-of-truth revenue metrics service over multi-source transaction data",
+  "main": "src/server.js",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node src/server.js",
+    "migrate": "node db/migrate.js",
+    "seed:stripe": "node src/ingest/stripeIngest.js",
+    "test": "node --test test/"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "pg": "^8.12.0",
+    "dotenv": "^16.4.5",
+    "stripe": "^16.9.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "license": "MIT"
+}
