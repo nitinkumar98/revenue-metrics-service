@@ -80,59 +80,58 @@ transactions
 7. Run the server: `npm start`
 8. Run the tests: `npm test`
 
-1. Start the server
+**1. Start the server**
 npm start
 
-2. Health check
+**2. Health check**
 
 curl.exe "http://localhost:3000/health"
 
 Expected:
 {"status":"ok"}
 
-3. Summary — the canonical revenue number
+**3. Summary — the canonical revenue number**
+   
 curl.exe "http://localhost:3000/metrics/summary?start=2020-01-01&end=2030-01-01"
 
 Expected (based on your data — 1 collected $100 charge, rest failed):
 
-json
 {
   "start": "2020-01-01T00:00:00.000Z",
   "end": "2030-01-01T00:00:00.000Z",
   "total_collected_cents": <amount>,
   "transaction_count": <txnCount>
 }
-4. Daily breakdown
+**4. Daily breakdown**
 curl.exe "http://localhost:3000/metrics/breakdown?start=2020-01-01&end=2030-01-01&granularity=day"
 
 Expected: one bucket with collected_cents: <Amount> on the day you created that charge — everything else in your DB (the failed ones) simply won't appear here since they're excluded by the allow-list.
 
-5. Weekly breakdown
+**5. Weekly breakdown**
 curl.exe "http://localhost:3000/metrics/breakdown?start=2020-01-01&end=2030-01-01&granularity=week"
 
-6. Edge cases (show these in your demo video)
+**6. Edge cases**
 
 Missing params → 400, not a crash:
 
-powershell
 curl.exe "http://localhost:3000/metrics/summary"
-json
+
 {"error":"start and end query params are required (ISO 8601 dates)"}
 
 Invalid range (end before start) → 400:
 
-powershell
+
 curl.exe "http://localhost:3000/metrics/summary?start=2026-01-01&end=2020-01-01"
-json
+
 {"error":"end must be after start"}
 
 A narrow date range with no data → zero, not an error:
 
-powershell
+
 curl.exe "http://localhost:3000/metrics/summary?start=1999-01-01&end=1999-12-31"
-json
 {"total_collected_cents":0,"transaction_count":0}
-7. Idempotency
+
+**7. Idempotency**
 npm run seed:stripe
 npm run seed:stripe
 curl.exe "http://localhost:3000/metrics/summary?start=2020-01-01&end=2030-01-01"
