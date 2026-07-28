@@ -6,6 +6,21 @@ closed canonical vocabulary, and exposes **one** definition of "revenue
 collected" through two views (a total and a time-bucketed breakdown) that are
 structurally guaranteed to agree.
 
+## Live deployment
+
+**Base URL:** https://revenue-metrics-service-g2vn.onrender.com
+
+Deployed on Render's free tier. Note: free-tier services spin down after
+~15 minutes of inactivity — the first request after idle may take 30–60
+seconds to respond while it wakes up. Hit `/health` once to warm it up
+before running anything timing-sensitive.
+
+```bash
+curl "https://revenue-metrics-service-g2vn.onrender.com/health"
+curl "https://revenue-metrics-service-g2vn.onrender.com/metrics/summary?start=2020-01-01&end=2030-01-01"
+curl "https://revenue-metrics-service-g2vn.onrender.com/metrics/breakdown?start=2020-01-01&end=2030-01-01&granularity=day"
+```
+
 ## Why this design
 
 **Allow-list, not exclusion-list.** `src/metrics/allowedStatuses.js` defines
@@ -80,65 +95,132 @@ transactions
 7. Run the server: `npm start`
 8. Run the tests: `npm test`
 
-**1. Start the server**
+## Testing the endpoints
+
+Swap `$BASE` for `http://localhost:3000` locally, or
+`https://revenue-metrics-service-g2vn.onrender.com` for the live deployment.
+
+**1. Start the server (local only — the Render deployment is already running)**
+```bash
 npm start
+```
 
 **2. Health check**
-
-Endpoint: curl.exe "http://localhost:3000/health"
-
+```bash
+curl "$BASE/health"
+```
 Expected:
+```json
 {"status":"ok"}
+```
 
 **3. Summary — the canonical revenue number**
-   
-Endpoint: curl.exe "http://localhost:3000/metrics/summary?start=2020-01-01&end=2030-01-01"
-
-Expected (based on your data — 1 collected $100 charge, rest failed):
-
+```bash
+curl "$BASE/metrics/summary?start=2020-01-01&end=2030-01-01"
+```
+Expected shape:
+```json
 {
   "start": "2020-01-01T00:00:00.000Z",
   "end": "2030-01-01T00:00:00.000Z",
   "total_collected_cents": <amount>,
   "transaction_count": <txnCount>
 }
-**4. Daily breakdown**
-Endpoint: curl.exe "http://localhost:3000/metrics/breakdown?start=2020-01-01&end=2030-01-01&granularity=day"
+```
 
-Expected: one bucket with collected_cents: <Amount> on the day you created that charge — everything else in your DB (the failed ones) simply won't appear here since they're excluded by the allow-list.
+**4. Daily breakdown**
+```bash
+curl "$BASE/metrics/breakdown?start=2020-01-01&end=2030-01-01&granularity=day"
+```
+Expected: one bucket with `collected_cents: <amount>` on the day you created
+that charge — everything else in the DB (declined/failed charges) simply
+won't appear here since they're excluded by the allow-list.
 
 **5. Weekly breakdown**
-curl.exe "http://localhost:3000/metrics/breakdown?start=2020-01-01&end=2030-01-01&granularity=week"
+```bash
+curl "$BASE/metrics/breakdown?start=2020-01-01&end=2030-01-01&granularity=week"
+```
 
 **6. Edge cases**
 
 Missing params → 400, not a crash:
-
-Endpoint: curl.exe "http://localhost:3000/metrics/summary"
-
+```bash
+curl "$BASE/metrics/summary"
+```
+```json
 {"error":"start and end query params are required (ISO 8601 dates)"}
+```
 
 Invalid range (end before start) → 400:
-
-
-Endpoint: curl.exe "http://localhost:3000/metrics/summary?start=2026-01-01&end=2020-01-01"
-
+```bash
+curl "$BASE/metrics/summary?start=2026-01-01&end=2020-01-01"
+```
+```json
 {"error":"end must be after start"}
+```
 
 A narrow date range with no data → zero, not an error:
-
-
-Endpoint: curl.exe "http://localhost:3000/metrics/summary?start=1999-01-01&end=1999-12-31"
+```bash
+curl "$BASE/metrics/summary?start=1999-01-01&end=1999-12-31"
+```
+```json
 {"total_collected_cents":0,"transaction_count":0}
+```
 
 **7. Idempotency**
+```bash
 npm run seed:stripe
 npm run seed:stripe
-Endpoint: curl.exe "http://localhost:3000/metrics/summary?start=2020-01-01&end=2030-01-01"
+curl "$BASE/metrics/summary?start=2020-01-01&end=2030-01-01"
+```
+`total_collected_cents` and `transaction_count` must stay exactly the same
+after re-running ingestion twice — no duplicates, because of the
+`unique(source, source_id)` constraint + upsert.
 
-total_collected_cents and transaction_count must stay exactly the same after re-running ingestion twice — no duplicates, because of the unique(source, source_id) constraint + upsert.
-
-8. Run the automated test suite
+**8. Run the automated test suite**
+```bash
 npm test
+```
+Expected: 4 pass (1 skips if run without a `DATABASE_URL` set).
 
-Expected: 4 pass
+See `TESTING.md` for the complete, step-by-step testing guide, including how
+to create Stripe test charges and how to verify the drift-guardrail test
+actually catches a regression.
+
+## Tradeoffs / what's simplified
+
+- **One live source wired up (Stripe), one more mapped but not wired
+  (`crm_invoices` in `statusMap.js`)** — added to prove the normalization
+  layer generalizes across a second vocabulary without touching
+  `metricsService.js`, but there's no live ingestion script for it here.
+- **Incremental cursor**: Stripe's `created: { gt: cursor }` param is wired
+  into `ingestStripeCharges`, but the cursor itself isn't persisted between
+  runs in this version — each run does a bounded full fetch. In production
+  I'd store the last successful `created` timestamp per source in a small
+  `sync_state` table, and on a 410/expired-cursor-shaped error, fall back to
+  omitting the `created` filter entirely (full backfill) rather than
+  crashing.
+- **Money as integer cents**, not floating point, to avoid rounding drift
+  in aggregation — deliberate, not an oversight.
+- **Week bucketing** uses Postgres `date_trunc('week', ...)`, which buckets
+  to the ISO week start (Monday).
+
+## Sources & references
+
+- Stripe API docs — Charges list & test mode: https://docs.stripe.com/api/charges/list
+- Stripe testing docs: https://docs.stripe.com/testing
+- Supabase database connection docs: https://supabase.com/docs/guides/database/connecting-to-postgres
+- node-postgres (`pg`) docs, connection pooling: https://node-postgres.com/features/pooling
+- Postgres `date_trunc` docs: https://www.postgresql.org/docs/current/functions-datetime.html
+- Node.js built-in test runner docs: https://nodejs.org/api/test.html
+- Render Node deployment docs: https://render.com/docs/deploy-node-express-app
+
+## AI usage
+
+Built with Claude (Anthropic). Used it to scaffold the schema, ingestion,
+metrics service, and the two guardrail tests, to reason through the
+allow-list-vs-exclusion-list argument, and to debug the live setup (Stripe
+key/account mismatches, Render deployment). Verified the guardrail test by
+deliberately injecting a second revenue query into `server.js` and
+confirming the test suite caught it before reverting the change. Chat
+export: <add your share link here>.
